@@ -64,10 +64,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const KiuthiSectionLabel('Your pieces'),
                 const SizedBox(height: 10),
                 _ColorChoices(
-                  colors: PieceColors.humanChoices,
+                  voice: 'Your',
+                  colors: PieceColors.except(widget.settings.computerColor),
                   selected: widget.settings.humanColor,
+                  blocked: widget.settings.computerColor,
                   onSelected: (color) async {
-                    setState(() => widget.settings.humanColor = color);
+                    if (!widget.settings.assignHumanColor(color)) return;
+                    setState(() {});
                     await _save();
                   },
                 ),
@@ -75,30 +78,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const KiuthiSectionLabel('Computer pieces'),
                 const SizedBox(height: 10),
                 _ColorChoices(
-                  colors: PieceColors.computerChoices,
+                  voice: 'Computer',
+                  colors: PieceColors.except(widget.settings.humanColor),
                   selected: widget.settings.computerColor,
+                  blocked: widget.settings.humanColor,
                   onSelected: (color) async {
-                    setState(() => widget.settings.computerColor = color);
+                    if (!widget.settings.assignComputerColor(color)) return;
+                    setState(() {});
                     await _save();
                   },
                 ),
               ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          KiuthiPanel(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Require a capture when one is available'),
-              subtitle: const Text(
-                'Provisional rule, not confirmed tradition. Applies to the next game. Both sides follow it.',
-              ),
-              value: widget.settings.compulsoryCaptures,
-              onChanged: (value) async {
-                setState(() => widget.settings.compulsoryCaptures = value);
-                await _save();
-              },
             ),
           ),
           const SizedBox(height: 12),
@@ -114,13 +104,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 class _ColorChoices extends StatelessWidget {
   const _ColorChoices({
+    required this.voice,
     required this.colors,
     required this.selected,
+    required this.blocked,
     required this.onSelected,
   });
 
+  final String voice;
   final List<Color> colors;
   final Color selected;
+  final Color blocked;
   final ValueChanged<Color> onSelected;
 
   @override
@@ -131,8 +125,10 @@ class _ColorChoices extends StatelessWidget {
       children: [
         for (final color in colors)
           _ColorDot(
+            voice: voice,
             color: color,
-            selected: color.toARGB32() == selected.toARGB32(),
+            selected: PieceColors.same(color, selected),
+            blocked: PieceColors.same(color, blocked),
             onTap: () => onSelected(color),
           ),
       ],
@@ -142,46 +138,57 @@ class _ColorChoices extends StatelessWidget {
 
 class _ColorDot extends StatelessWidget {
   const _ColorDot({
+    required this.voice,
     required this.color,
     required this.selected,
+    required this.blocked,
     required this.onTap,
   });
 
+  final String voice;
   final Color color;
   final bool selected;
+  final bool blocked;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final hex = color.toARGB32().toRadixString(16);
     return Semantics(
       button: true,
+      enabled: !blocked,
       selected: selected,
-      label: 'Piece color ${color.toARGB32().toRadixString(16)}',
+      label: blocked
+          ? '$voice piece color $hex, already used'
+          : '$voice piece color $hex',
       child: InkWell(
-        onTap: onTap,
+        onTap: blocked ? null : onTap,
         customBorder: const CircleBorder(),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          width: 46,
-          height: 46,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color,
-            border: Border.all(
-              color: selected ? KiuthiTheme.gold : Colors.white,
-              width: selected ? 3.5 : 2,
-            ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x33000000),
-                blurRadius: 4,
-                offset: Offset(0, 2),
+        child: Opacity(
+          opacity: blocked ? 0.35 : 1,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color,
+              border: Border.all(
+                color: selected ? KiuthiTheme.gold : Colors.white,
+                width: selected ? 3.5 : 2,
               ),
-            ],
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 4,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: selected
+                ? const Icon(Icons.check_rounded, color: Colors.white, size: 22)
+                : null,
           ),
-          child: selected
-              ? const Icon(Icons.check_rounded, color: Colors.white, size: 22)
-              : null,
         ),
       ),
     );

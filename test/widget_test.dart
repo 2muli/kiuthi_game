@@ -1,10 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kiuthi_game/app.dart';
+import 'package:kiuthi_game/engine/game_controller.dart';
+import 'package:kiuthi_game/models/board_state.dart';
+import 'package:kiuthi_game/models/difficulty.dart';
+import 'package:kiuthi_game/models/game_result.dart';
+import 'package:kiuthi_game/screens/game_over_screen.dart';
+import 'package:kiuthi_game/screens/game_screen.dart';
+import 'package:kiuthi_game/screens/settings_screen.dart';
+import 'package:kiuthi_game/widgets/game_status.dart';
+import 'package:kiuthi_game/widgets/kiuthi_board.dart';
 import 'package:kiuthi_game/storage/game_storage.dart';
 import 'package:kiuthi_game/storage/key_value_store.dart';
 import 'package:kiuthi_game/storage/settings_storage.dart';
 import 'package:kiuthi_game/storage/statistics_storage.dart';
+import 'package:kiuthi_game/theme/kiuthi_theme.dart';
+import 'package:kiuthi_game/theme/piece_colors.dart';
 
 void main() {
   Future<void> useTallSurface(WidgetTester tester) async {
@@ -28,6 +39,8 @@ void main() {
     );
 
     expect(find.text('Kiuthi'), findsOneWidget);
+    expect(find.textContaining('Kamba'), findsNothing);
+    expect(find.textContaining('Kikamba'), findsNothing);
     expect(find.text('Start playing'), findsOneWidget);
     expect(find.text('Home'), findsWidgets);
     expect(find.text('Statistics'), findsOneWidget);
@@ -76,7 +89,9 @@ void main() {
     expect(find.text('That move is not legal.'), findsOneWidget);
   });
 
-  testWidgets('a legal move is played and the computer answers', (tester) async {
+  testWidgets('a legal move is played and the computer answers', (
+    tester,
+  ) async {
     await useTallSurface(tester);
     final store = MemoryStore();
     await tester.pumpWidget(
@@ -89,9 +104,7 @@ void main() {
     await tester.tap(find.text('Start playing'));
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.bySemanticsLabel('Row 4, column 1, your piece').last,
-    );
+    await tester.tap(find.bySemanticsLabel('Row 4, column 1, your piece').last);
     await tester.pump();
     await tester.tap(find.bySemanticsLabel('Row 3, column 1, empty').last);
     await tester.pump();
@@ -113,6 +126,15 @@ void main() {
       );
     }
     expect(answered, isTrue);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.bySemanticsLabel('Row 4, column 1, your piece'),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('Row 3, column 1, empty'), findsOneWidget);
   });
 
   testWidgets('How to Play shows the edge rule and the provisional ending', (
@@ -131,10 +153,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('The board'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('The edge line'), 300);
-    expect(
-      find.textContaining('but not backward'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('but not backward'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.textContaining('provisional development rules'),
       300,
@@ -143,5 +162,90 @@ void main() {
       find.textContaining('provisional development rules'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('settings will not give both sides the same piece colour', (
+    tester,
+  ) async {
+    await useTallSurface(tester);
+    final settings = SettingsStorage(MemoryStore())
+      ..humanColor = KiuthiTheme.bluePiece
+      ..computerColor = KiuthiTheme.bluePiece;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: KiuthiTheme.theme(),
+        home: SettingsScreen(settings: settings, onChanged: () {}),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final blueHex = KiuthiTheme.bluePiece.toARGB32().toRadixString(16);
+    expect(find.bySemanticsLabel('Your piece color $blueHex'), findsNothing);
+    expect(
+      find.bySemanticsLabel('Computer piece color $blueHex'),
+      findsNothing,
+    );
+    expect(settings.humanColor.toARGB32(), KiuthiTheme.bluePiece.toARGB32());
+    expect(settings.computerColor.toARGB32(), KiuthiTheme.bluePiece.toARGB32());
+
+    final teal = PieceColors.computerChoices[1];
+    await tester.tap(
+      find.bySemanticsLabel(
+        'Computer piece color ${teal.toARGB32().toRadixString(16)}',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(settings.computerColor.toARGB32(), teal.toARGB32());
+    expect(
+      settings.humanColor.toARGB32(),
+      isNot(settings.computerColor.toARGB32()),
+    );
+  });
+
+  testWidgets('game over scrolls on a short screen', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(480, 430));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: KiuthiTheme.theme(),
+        home: GameOverScreen(
+          state: BoardState.initial().copyWith(
+            status: GameStatus.redWins,
+            endReason: EndReason.eliminated,
+          ),
+          difficulty: Difficulty.easy,
+          canUndo: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Play Again'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('landscape keeps the board larger than a player card', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final store = MemoryStore();
+    final settings = SettingsStorage(store)..load();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: KiuthiTheme.theme(),
+        home: GameScreen(
+          session: GameSession.newGame(settings.difficulty),
+          settings: settings,
+          statistics: StatisticsStorage(store)..load(),
+          games: GameStorage(store),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final board = tester.getSize(find.byType(KiuthiBoard));
+    final card = tester.getSize(find.byType(PlayerBanner).first);
+    expect(board.shortestSide, greaterThan(card.height));
+    expect(tester.takeException(), isNull);
   });
 }

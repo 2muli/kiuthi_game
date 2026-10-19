@@ -52,7 +52,7 @@ const List<String> assumptionNotes = [
   'Until a piece lands on the opponent\'s last line, that piece may move sideways or forward only. Red\'s last line is the top row. Blue\'s last line is the bottom row. Reaching it is remembered for that piece alone, and only then may that piece move backward.',
   'Sliding along the row a piece already occupies is allowed. A backward step, including a backward jump, is blocked until that piece has reached the far line.',
   'Each jump is a straight two-step along connected points. A later jump in the same turn may change direction.',
-  'Starting a capture is optional unless Settings requires captures. After a capture begins, that piece must keep jumping while another jump is legal. If several jumps are legal, the player chooses.',
+  'Starting a capture is optional. A quiet move stays legal even when a capture exists. After a capture begins, that piece must keep jumping while another jump is legal, and the player chooses each jump, including when only one remains.',
   'A piece may enter and remain on the opponent\'s edge. There is no promotion.',
   'Red moves first. There is no extra restriction on the first move.',
   'The game can end, provisionally, when a side has no pieces, when the side to move has no legal move, or when the same position occurs three times. These endings are labelled provisional in the app.',

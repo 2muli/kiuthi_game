@@ -99,4 +99,28 @@ void main() {
     expect(session.state.activePlayer, Player.red);
     expect(session.state.redCaptured, start.redCaptured);
   });
+
+  test('undo restores a piece the computer has captured', () {
+    final start =
+        (PositionSetup()
+              ..put(Player.red, 4, 2)
+              ..put(Player.blue, 2, 2))
+            .build();
+    final session = GameSession(state: start, difficulty: Difficulty.easy);
+    final openingKey = session.state.positionKey;
+    final approach = session.legalMoves.firstWhere(
+      (move) => move.to == const BoardPoint(3, 2),
+    );
+    expect(session.applyHumanMove(approach), isTrue);
+    final capture = session.legalMoves.firstWhere(
+      (move) => move.to == const BoardPoint(4, 2),
+    );
+    expect(session.applyComputerStep(capture), isTrue);
+    expect(session.state.count(Player.red), 0);
+    expect(session.undo(), isTrue);
+    expect(session.state.positionKey, openingKey);
+    expect(session.state.count(Player.red), 1);
+    expect(session.state.pieceAt(const BoardPoint(4, 2))!.owner, Player.red);
+    expect(session.state.activePlayer, Player.red);
+  });
 }

@@ -10,6 +10,7 @@ import 'package:kiuthi_game/storage/game_storage.dart';
 import 'package:kiuthi_game/storage/key_value_store.dart';
 import 'package:kiuthi_game/storage/settings_storage.dart';
 import 'package:kiuthi_game/storage/statistics_storage.dart';
+import 'package:kiuthi_game/theme/kiuthi_theme.dart';
 
 void main() {
   test('settings and statistics round-trip in local storage', () async {
@@ -27,10 +28,7 @@ void main() {
     expect(loaded.sound, isFalse);
     expect(loaded.compulsoryCaptures, isTrue);
     expect(loaded.humanColor.toARGB32(), const Color(0xFF2E7D32).toARGB32());
-    expect(
-      loaded.computerColor.toARGB32(),
-      const Color(0xFF283593).toARGB32(),
-    );
+    expect(loaded.computerColor.toARGB32(), const Color(0xFF283593).toARGB32());
 
     final stats = StatisticsStorage(store);
     stats.record(
@@ -61,6 +59,31 @@ void main() {
     expect(again.last?.status, GameStatus.draw);
     expect(again.last?.difficulty, Difficulty.easy);
     expect(again.last?.humanCaptured, 4);
+  });
+
+  test('a saved pair of identical piece colours is split on load', () async {
+    const shared = Color(0xFF2E7D32);
+    final store = MemoryStore();
+    await store.setString(
+      SettingsStorage.humanColorKey,
+      shared.toARGB32().toString(),
+    );
+    await store.setString(
+      SettingsStorage.computerColorKey,
+      shared.toARGB32().toString(),
+    );
+
+    final loaded = SettingsStorage(store)..load();
+    expect(loaded.humanColor.toARGB32(), shared.toARGB32());
+    expect(
+      loaded.computerColor.toARGB32(),
+      isNot(loaded.humanColor.toARGB32()),
+    );
+    expect(loaded.computerColor.toARGB32(), KiuthiTheme.bluePiece.toARGB32());
+    expect(loaded.assignHumanColor(loaded.computerColor), isFalse);
+    expect(loaded.humanColor.toARGB32(), shared.toARGB32());
+    expect(loaded.assignComputerColor(loaded.humanColor), isFalse);
+    expect(loaded.computerColor.toARGB32(), KiuthiTheme.bluePiece.toARGB32());
   });
 
   test(

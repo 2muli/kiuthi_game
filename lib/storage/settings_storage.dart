@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/difficulty.dart';
 import '../theme/kiuthi_theme.dart';
+import '../theme/piece_colors.dart';
 import 'key_value_store.dart';
 
 class SettingsStorage {
@@ -28,6 +29,25 @@ class SettingsStorage {
     compulsoryCaptures = _store.getString(compulsoryKey) == '1';
     humanColor = _readColor(humanColorKey, KiuthiTheme.redPiece);
     computerColor = _readColor(computerColorKey, KiuthiTheme.bluePiece);
+    if (PieceColors.same(humanColor, computerColor)) {
+      computerColor = PieceColors.computerDistinctFrom(humanColor);
+    }
+  }
+
+  /// Keeps the two sides on different colours. Returns false when [color]
+  /// is already used by the computer.
+  bool assignHumanColor(Color color) {
+    if (PieceColors.same(color, computerColor)) return false;
+    humanColor = color;
+    return true;
+  }
+
+  /// Keeps the two sides on different colours. Returns false when [color]
+  /// is already used by the person.
+  bool assignComputerColor(Color color) {
+    if (PieceColors.same(color, humanColor)) return false;
+    computerColor = color;
+    return true;
   }
 
   Color _readColor(String key, Color fallback) {

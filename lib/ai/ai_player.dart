@@ -29,6 +29,10 @@ class AiPlayer {
     if (sequences.isEmpty) return const [];
 
     final config = DifficultyConfig.of(difficulty);
+    if (_isComputerOpening(state)) {
+      final random = Random(seed);
+      return _encode(sequences[random.nextInt(sequences.length)]);
+    }
     final MoveSequence chosen;
     if (config.useMinimax) {
       chosen = Minimax.choose(
@@ -42,6 +46,13 @@ class AiPlayer {
     }
     if (!_isOffered(chosen, sequences)) return _encode(sequences.first);
     return _encode(chosen);
+  }
+
+  /// Blue's first turn, after one human move and before Blue has replied.
+  static bool _isComputerOpening(BoardState state) {
+    return state.activePlayer == Player.blue &&
+        state.chainPieceId == null &&
+        state.positionHistory.length == 2;
   }
 
   static MoveSequence _easy(

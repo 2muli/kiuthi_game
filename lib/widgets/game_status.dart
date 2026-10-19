@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../models/piece.dart';
 import '../theme/kiuthi_theme.dart';
+import 'board_piece.dart';
 
 class PlayerBanner extends StatelessWidget {
   const PlayerBanner({
@@ -9,24 +11,28 @@ class PlayerBanner extends StatelessWidget {
     required this.detail,
     required this.mark,
     required this.active,
+    required this.taken,
+    required this.takenOwner,
   });
 
   final String title;
   final String detail;
   final Widget mark;
   final bool active;
+  final int taken;
+  final Player takenOwner;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
+    return Container(
+      clipBehavior: Clip.antiAlias,
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
       decoration: BoxDecoration(
         color: KiuthiTheme.card,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: active ? KiuthiTheme.gold : KiuthiTheme.sandDeep,
-          width: active ? 2 : 1,
+          width: 2,
         ),
         boxShadow: [
           BoxShadow(
@@ -52,6 +58,17 @@ class PlayerBanner extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
+          taken == 0
+              ? const SizedBox(height: 16, width: double.infinity)
+              : Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: [
+                    for (var index = 0; index < taken; index++)
+                      BoardPiece(owner: takenOwner, diameter: 16),
+                  ],
+                ),
+          const SizedBox(height: 6),
           Text(
             detail,
             style: const TextStyle(
@@ -60,26 +77,30 @@ class PlayerBanner extends StatelessWidget {
               color: KiuthiTheme.muted,
             ),
           ),
-          if (active) ...[
-            const SizedBox(height: 6),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                color: Color(0xFFFFF3D0),
-                borderRadius: BorderRadius.all(Radius.circular(999)),
-              ),
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                child: Text(
-                  'To move',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: KiuthiTheme.clay,
+          const SizedBox(height: 6),
+          ExcludeSemantics(
+            excluding: !active,
+            child: Opacity(
+              opacity: active ? 1 : 0,
+              child: const DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Color(0xFFFFF3D0),
+                  borderRadius: BorderRadius.all(Radius.circular(999)),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  child: Text(
+                    'To move',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: KiuthiTheme.clay,
+                    ),
                   ),
                 ),
               ),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -87,10 +108,9 @@ class PlayerBanner extends StatelessWidget {
 }
 
 class StatusLine extends StatelessWidget {
-  const StatusLine({super.key, required this.message, this.busy = false});
+  const StatusLine({super.key, required this.message});
 
   final String message;
-  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -102,23 +122,17 @@ class StatusLine extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Column(
-          children: [
-            Text(
+        child: SizedBox(
+          height: 40,
+          child: Center(
+            child: Text(
               message,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: const TextStyle(fontWeight: FontWeight.w700, height: 1.3),
             ),
-            if (busy) ...[
-              const SizedBox(height: 8),
-              const LinearProgressIndicator(
-                minHeight: 3,
-                color: KiuthiTheme.clay,
-                backgroundColor: KiuthiTheme.sandDeep,
-                borderRadius: BorderRadius.all(Radius.circular(99)),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );

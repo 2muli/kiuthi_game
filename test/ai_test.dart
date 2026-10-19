@@ -3,6 +3,7 @@ import 'package:kiuthi_game/ai/ai_player.dart';
 import 'package:kiuthi_game/ai/difficulty_config.dart';
 import 'package:kiuthi_game/ai/position_evaluator.dart';
 import 'package:kiuthi_game/engine/game_controller.dart';
+import 'package:kiuthi_game/engine/move_generator.dart';
 import 'package:kiuthi_game/engine/move_validator.dart';
 import 'package:kiuthi_game/engine/rule_config.dart';
 import 'package:kiuthi_game/models/board_point.dart';
@@ -67,6 +68,24 @@ void main() {
       expect(encoded[2], isNot(-1), reason: difficulty.name);
       expect(encoded[1], const BoardPoint(3, 1).index);
     }
+  });
+
+  test('Intermediate does not always answer the opening on the same point', () {
+    final opening = BoardState.initial();
+    final first = MoveGenerator.immediate(opening, rules).first;
+    final afterHuman = GameFlow.applyStep(opening, first, rules);
+    final seen = <int>{};
+    for (var seed = 0; seed < 24; seed++) {
+      final encoded = AiPlayer.choose(
+        state: afterHuman,
+        difficulty: Difficulty.intermediate,
+        rules: rules,
+        seed: seed,
+      );
+      expect(MoveValidator.adaptEncoded(afterHuman, encoded, rules), isNotNull);
+      seen.add(encoded[1]);
+    }
+    expect(seen.length, greaterThan(1));
   });
 
   test('Easy varies among similar quiet moves and still stays legal', () {

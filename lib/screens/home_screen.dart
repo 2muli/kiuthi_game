@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../engine/game_controller.dart';
-import '../engine/rule_config.dart';
 import '../models/board_state.dart';
 import '../storage/game_storage.dart';
 import '../storage/settings_storage.dart';
@@ -71,21 +70,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'A Kikamba strategy game on a five-by-five line board. Play against the computer.',
+            'Play against the computer on a five-by-five line board.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 15, height: 1.35, color: KiuthiTheme.muted),
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.35,
+              color: KiuthiTheme.muted,
+            ),
           ),
           const SizedBox(height: 16),
           const SizedBox(height: 280, child: _OpeningBoard()),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: () {
-              final rules = RuleConfig.standard.copyWith(
-                capturesCompulsory: widget.settings.compulsoryCaptures,
-              );
-              _openGame(
-                GameSession.newGame(widget.settings.difficulty, rules: rules),
-              );
+              _openGame(GameSession.newGame(widget.settings.difficulty));
             },
             icon: const Icon(Icons.play_arrow_rounded),
             label: const Text('Start playing'),
@@ -95,11 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
             OutlinedButton.icon(
               onPressed: () {
                 _openGame(
-                  GameSession(
-                    state: saved.state,
-                    difficulty: saved.difficulty,
-                    rules: saved.rules,
-                  ),
+                  GameSession(state: saved.state, difficulty: saved.difficulty),
                 );
               },
               icon: const Icon(Icons.history_rounded),

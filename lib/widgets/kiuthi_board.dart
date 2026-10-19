@@ -93,7 +93,7 @@ class KiuthiBoard extends StatelessWidget {
     if (piece.id == move.pieceId) return true;
     if (move.jumped != null &&
         piece.position == move.jumped &&
-        animationT > 0.55) {
+        animationT >= 0.5) {
       return true;
     }
     return false;

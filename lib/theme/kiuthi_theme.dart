@@ -70,7 +70,11 @@ class KiuthiTheme {
           fontSize: 20,
           fontWeight: FontWeight.w800,
         ),
-        contentTextStyle: const TextStyle(color: ink, height: 1.4, fontSize: 15),
+        contentTextStyle: const TextStyle(
+          color: ink,
+          height: 1.4,
+          fontSize: 15,
+        ),
       ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((states) {
@@ -112,7 +116,33 @@ class KiuthiTheme {
           side: const BorderSide(color: sandDeep),
         ),
       ),
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: _StillPageTransitionsBuilder(),
+          TargetPlatform.iOS: _StillPageTransitionsBuilder(),
+          TargetPlatform.linux: _StillPageTransitionsBuilder(),
+          TargetPlatform.macOS: _StillPageTransitionsBuilder(),
+          TargetPlatform.windows: _StillPageTransitionsBuilder(),
+          TargetPlatform.fuchsia: _StillPageTransitionsBuilder(),
+        },
+      ),
     );
+  }
+}
+
+/// Opens a route in place. The board does not slide or zoom in.
+class _StillPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _StillPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return child;
   }
 }
 

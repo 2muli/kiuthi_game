@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +9,7 @@ import '../ai/ai_player.dart';
 import '../engine/game_controller.dart';
 import '../engine/move_validator.dart';
 import '../models/board_point.dart';
+import '../models/board_state.dart';
 import '../models/game_result.dart';
 import '../models/move.dart';
 import '../models/piece.dart';
@@ -48,8 +50,11 @@ class _GameScreenState extends State<GameScreen>
   Timer? _flashTimer;
   bool _thinking = false;
   bool _animating = false;
+  bool _humanMotion = false;
   bool _overShown = false;
+  int _turnEpoch = 0;
   Move? _animatingMove;
+  AudioPlayer? _applause;
 
   @override
   void initState() {
@@ -74,6 +79,7 @@ class _GameScreenState extends State<GameScreen>
   void dispose() {
     _flashTimer?.cancel();
     _motion.dispose();
+    _applause?.dispose();
     super.dispose();
   }
 
@@ -97,15 +103,11 @@ class _GameScreenState extends State<GameScreen>
 
   String get _statusMessage {
     if (_flash != null) return _flash!;
-    if (_thinking) return 'Computer is thinking...';
-    if (_animating && session.state.activePlayer == Player.blue) {
-      return 'Computer is moving...';
-    }
     if (session.state.status != GameStatus.ongoing) {
       return resultHeadline(session.state.status);
     }
     if (session.state.chainPieceId != null) {
-      return 'Capture continues. Choose the next jump.';
+      return 'You can capture again. Tap the orange circle.';
     }
     if (session.state.activePlayer == Player.blue) {
       return 'Computer to move.';
@@ -129,24 +131,30 @@ class _GameScreenState extends State<GameScreen>
     );
   }
 
-  Future<void> _animate(Move move) async {
+  /// Returns false when undo cancelled this motion.
+  Future<bool> _animate(Move move, {required bool human}) async {
+    final epoch = _turnEpoch;
     setState(() {
       _animating = true;
+      _humanMotion = human;
       _animatingMove = move;
     });
     await _motion.forward(from: 0);
-    if (!mounted) return;
+    if (!mounted || epoch != _turnEpoch) return false;
     if (widget.settings.sound) {
       SystemSound.play(SystemSoundType.click);
     }
+    return true;
   }
 
   Future<void> _playHuman(Move move) async {
-    await _animate(move);
-    if (!mounted) return;
+    final epoch = _turnEpoch;
+    final finished = await _animate(move, human: true);
+    if (!mounted || !finished || epoch != _turnEpoch) return;
     final played = session.applyHumanMove(move);
     setState(() {
       _animating = false;
+      _humanMotion = false;
       _animatingMove = null;
       _selectedId = session.state.chainPieceId;
     });
@@ -155,10 +163,6 @@ class _GameScreenState extends State<GameScreen>
       return;
     }
     if (session.state.chainPieceId != null) {
-      final continuations = session.legalMoves;
-      if (continuations.length == 1) {
-        await _playHuman(continuations.first);
-      }
       await _persist();
       return;
     }
@@ -174,6 +178,7 @@ class _GameScreenState extends State<GameScreen>
     if (!mounted || session.state.status != GameStatus.ongoing) return;
     if (session.state.activePlayer != Player.blue) return;
     final token = session.guard.start();
+    final epoch = _turnEpoch;
     final key = session.state.positionKey;
     setState(() => _thinking = true);
     final encoded = await compute(
@@ -185,7 +190,9 @@ class _GameScreenState extends State<GameScreen>
         seed: DateTime.now().millisecondsSinceEpoch,
       ),
     );
-    if (!mounted || !session.guard.accepts(token)) return;
+    if (!mounted || !session.guard.accepts(token) || epoch != _turnEpoch) {
+      return;
+    }
     if (session.state.positionKey != key) return;
     setState(() => _thinking = false);
 
@@ -209,12 +216,20 @@ class _GameScreenState extends State<GameScreen>
     }
 
     for (final move in moves) {
-      if (!mounted || !session.guard.accepts(token)) return;
-      await _animate(move);
-      if (!mounted || !session.guard.accepts(token)) return;
+      if (!mounted || !session.guard.accepts(token) || epoch != _turnEpoch) {
+        return;
+      }
+      final finished = await _animate(move, human: false);
+      if (!mounted ||
+          !finished ||
+          !session.guard.accepts(token) ||
+          epoch != _turnEpoch) {
+        return;
+      }
       final applied = session.applyComputerStep(move);
       setState(() {
         _animating = false;
+        _humanMotion = false;
         _animatingMove = null;
       });
       if (!applied) {
@@ -231,6 +246,35 @@ class _GameScreenState extends State<GameScreen>
     if (session.state.status == GameStatus.ongoing) return;
     _overShown = true;
     final board = session.state;
+    if (board.status == GameStatus.redWins) unawaited(_cheer());
+    if (!mounted) return;
+    final action = await Navigator.of(context).push<OverAction>(
+      MaterialPageRoute(
+        builder: (context) => GameOverScreen(
+          state: session.state,
+          difficulty: session.difficulty,
+          canUndo: session.canUndo,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (action == OverAction.undo) {
+      final undone = session.undo();
+      _turnEpoch++;
+      _motion.stop();
+      unawaited(_applause?.stop());
+      setState(() {
+        _overShown = false;
+        _thinking = false;
+        _animating = false;
+        _humanMotion = false;
+        _animatingMove = null;
+        _selectedId = session.state.chainPieceId;
+        _flash = null;
+      });
+      if (undone) await _persist();
+      return;
+    }
     widget.statistics.record(
       difficulty: session.difficulty,
       status: board.status,
@@ -243,15 +287,6 @@ class _GameScreenState extends State<GameScreen>
     await widget.statistics.persist();
     await widget.games.clear();
     if (!mounted) return;
-    final action = await Navigator.of(context).push<OverAction>(
-      MaterialPageRoute(
-        builder: (context) => GameOverScreen(
-          state: session.state,
-          difficulty: session.difficulty,
-        ),
-      ),
-    );
-    if (!mounted) return;
     switch (action) {
       case OverAction.again:
         setState(() {
@@ -261,9 +296,12 @@ class _GameScreenState extends State<GameScreen>
           _overShown = false;
         });
         await _persist();
+        break;
       case OverAction.changeDifficulty:
       case OverAction.home:
         Navigator.of(context).pop();
+        break;
+      case OverAction.undo:
       case null:
         break;
     }
@@ -307,15 +345,29 @@ class _GameScreenState extends State<GameScreen>
     _show('That move is not legal.');
   }
 
+  Future<void> _cheer() async {
+    if (!widget.settings.sound) return;
+    final player = _applause ??= AudioPlayer();
+    await player.stop();
+    await player.play(AssetSource('applause.wav'));
+  }
+
   Future<void> _undo() async {
-    if (_animating) return;
+    if (_humanMotion) return;
     final undone = session.undo();
     if (!undone) {
       _show('Nothing to undo yet.');
       return;
     }
+    _turnEpoch++;
+    _motion.stop();
+    unawaited(_applause?.stop());
     setState(() {
       _thinking = false;
+      _animating = false;
+      _humanMotion = false;
+      _animatingMove = null;
+      _overShown = false;
       _selectedId = session.state.chainPieceId;
       _flash = null;
     });
@@ -384,6 +436,40 @@ class _GameScreenState extends State<GameScreen>
   }
 
   @override
+  Widget _banners(BoardState state, bool redTurn, {required bool beside}) {
+    final you = PlayerBanner(
+      title: 'You · Red',
+      detail:
+          '${state.count(Player.red)} pieces · captured ${state.redCaptured}',
+      mark: const BoardPiece(owner: Player.red, diameter: 32),
+      active: redTurn,
+      taken: state.redCaptured,
+      takenOwner: Player.blue,
+    );
+    final computer = PlayerBanner(
+      title: 'Computer · Blue',
+      detail:
+          '${state.count(Player.blue)} pieces · captured ${state.blueCaptured}',
+      mark: const BoardPiece(owner: Player.blue, diameter: 32),
+      active: !redTurn && state.status == GameStatus.ongoing,
+      taken: state.blueCaptured,
+      takenOwner: Player.red,
+    );
+    if (beside) {
+      return Column(children: [you, const SizedBox(height: 8), computer]);
+    }
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: you),
+          const SizedBox(width: 8),
+          Expanded(child: computer),
+        ],
+      ),
+    );
+  }
+
   Widget build(BuildContext context) {
     final state = session.state;
     final redTurn =
@@ -415,64 +501,64 @@ class _GameScreenState extends State<GameScreen>
           ],
         ),
         body: KiuthiPage(
+          maxWidth: 840,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            child: Column(
-              children: [
-                IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        child: PlayerBanner(
-                          title: 'You · Red',
-                          detail:
-                              '${state.count(Player.red)} pieces · captured ${state.redCaptured}',
-                          mark: const BoardPiece(
-                            owner: Player.red,
-                            diameter: 32,
-                          ),
-                          active: redTurn,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: PlayerBanner(
-                          title: 'Computer · Blue',
-                          detail:
-                              '${state.count(Player.blue)} pieces · captured ${state.blueCaptured}',
-                          mark: const BoardPiece(
-                            owner: Player.blue,
-                            diameter: 32,
-                          ),
-                          active:
-                              !redTurn && state.status == GameStatus.ongoing,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: KiuthiBoard(
-                    state: state,
-                    legalMoves: _busy ? const [] : _shownMoves,
-                    selectedPieceId: _selectedId,
-                    animating: _animatingMove,
-                    animationT: _motion.value,
-                    onPointTapped: _onPoint,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                StatusLine(message: _statusMessage, busy: _busy),
-                const SizedBox(height: 10),
-                GameControls(
-                  undoEnabled: session.canUndo && !_animating,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final landscape = constraints.maxWidth > constraints.maxHeight;
+                final board = KiuthiBoard(
+                  state: state,
+                  legalMoves: _busy ? const [] : _shownMoves,
+                  selectedPieceId: _selectedId,
+                  animating: _animatingMove,
+                  animationT: _motion.value,
+                  onPointTapped: _onPoint,
+                );
+                final status = StatusLine(message: _statusMessage);
+                final controls = GameControls(
+                  undoEnabled: session.canUndo && !_humanMotion,
                   onUndo: _undo,
                   onRestart: _restart,
                   onHome: _home,
-                ),
-              ],
+                );
+                if (landscape) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: board),
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: constraints.maxWidth * 0.34,
+                        child: Column(
+                          children: [
+                            Expanded(
+                              child: SingleChildScrollView(
+                                child: _banners(state, redTurn, beside: true),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            status,
+                            const SizedBox(height: 8),
+                            controls,
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return Column(
+                  children: [
+                    _banners(state, redTurn, beside: false),
+                    const SizedBox(height: 8),
+                    Expanded(child: board),
+                    const SizedBox(height: 8),
+                    status,
+                    const SizedBox(height: 10),
+                    controls,
+                  ],
+                );
+              },
             ),
           ),
         ),
